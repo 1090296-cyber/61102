@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>碰到就結束！</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 使用 Google 字體 Inter */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&family=Noto+Sans+TC:wght@400;700&display=swap');
+        body {
+            font-family: 'Inter', 'Noto Sans TC', sans-serif;
+            touch-action: none; /* 防止在移動設備上滑動時滾動頁面 */
+        }
+        canvas {
+            background-color: #1a202c; /* 深灰色背景 */
+            display: block;
+            border-radius: 0.5rem;
+        }
+        /* 自定義 UI 元素的樣式 */
+        .game-ui {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background-color: rgba(26, 32, 44, 0.8);
+            padding: 2rem;
+            border-radius: 1rem;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+            color: white;
+        }
+        .btn {
+            display: inline-block;
+            background-color: #4299e1; /* 藍色 */
+            color: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: bold;
+            text-decoration: none;
+            transition: background-color 0.3s;
+            cursor: pointer;
+            border: none;
+        }
+        .btn:hover {
+            background-color: #3182ce; /* 深藍色 */
+        }
+    </style>
+</head>
+<body class="bg-gray-900 flex items-center justify-center h-screen overflow-hidden">
+
+    <div id="gameContainer" class="relative w-full max-w-lg md:max-w-xl lg:max-w-2xl aspect-[3/4] shadow-2xl rounded-lg">
+        <canvas id="gameCanvas"></canvas>
+
+        <!-- 分數顯示 -->
+        <div id="scoreDisplay" class="absolute top-4 left-4 text-white text-2xl font-bold">分數: 0</div>
+
+        <!-- 開始畫面 -->
+        <div id="startScreen" class="game-ui">
+            <h1 class="text-4xl font-bold mb-4">碰到就結束！</h1>
+            <p class="mb-6">用鍵盤左右鍵或手指滑動來閃躲障礙物。</p>
+            <button id="startButton" class="btn">開始遊戲</button>
+        </div>
+
+        <!-- 遊戲結束畫面 -->
+        <div id="gameOverScreen" class="game-ui hidden">
+            <h1 class="text-4xl font-bold mb-2">遊戲結束</h1>
+            <p class="text-xl mb-4">你的分數: <span id="finalScore">0</span></p>
+            <button id="restartButton" class="btn">重新開始</button>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const gameContainer = document.getElementById('gameContainer');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const finalScore = document.getElementById('finalScore');
+        
+        let player, obstacles, score, animationFrameId, obstacleSpawnTimer;
+        let isGameOver = false;
+
+        // 鍵盤控制
+        const keys = {};
+        window.addEventListener('keydown', (e) => keys[e.key] = true);
+        window.addEventListener('keyup', (e) => keys[e.key] = false);
+
+        // 設置畫布大小以適應容器
+        function resizeCanvas() {
+            canvas.width = gameContainer.clientWidth;
+            canvas.height = gameContainer.clientHeight;
+        }
+
+        // 初始化遊戲變數
+        function init() {
+            isGameOver = false;
+            
+            // 玩家設定
+            const playerSize = canvas.width * 0.1;
+            player = {
+                x: canvas.width / 2 - playerSize / 2,
+                y: canvas.height - playerSize - 20,
+                width: playerSize,
+                height: playerSize,
+                color: '#4299e1', // 藍色
+                speed: 8
+            };
+
+            // 障礙物設定
+            obstacles = [];
+            score = 0;
+            scoreDisplay.textContent = '分數: 0';
+            
+            gameOverScreen.classList.add('hidden');
+            scoreDisplay.classList.remove('hidden');
+
+            // 停止之前的動畫和計時器
+            if (animationFrameId) cancelAnimationFrame(animationFrameId);
+            if (obstacleSpawnTimer) clearInterval(obstacleSpawnTimer);
+            
+            spawnObstacle();
+            obstacleSpawnTimer = setInterval(spawnObstacle, 1000); // 每秒產生一個新的障礙物
+            
+            gameLoop();
+        }
+
+        // 產生障礙物
+        function spawnObstacle() {
+            if(isGameOver) return;
+            const size = Math.random() * (canvas.width * 0.1) + (canvas.width * 0.05);
+            const x = Math.random() * (canvas.width - size);
+            const speed = Math.random() * 2 + 2 + (score / 100); // 速度會隨著分數增加
+            obstacles.push({
+                x: x,
+                y: -size,
+                width: size,
+                height: size,
+                color: '#e53e3e', // 紅色
+                speed: speed
+            });
+        }
+
+        // 遊戲主循環
+        function gameLoop() {
+            if (isGameOver) return;
+            
+            update();
+            draw();
+            
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // 更新遊戲狀態
+        function update() {
+            // 玩家移動
+            if (keys['ArrowLeft'] || keys['a']) {
+                player.x -= player.speed;
+            }
+            if (keys['ArrowRight'] || keys['d']) {
+                player.x += player.speed;
+            }
+            
+            // 玩家邊界檢測
+            if (player.x < 0) player.x = 0;
+            if (player.x + player.width > canvas.width) {
+                player.x = canvas.width - player.width;
+            }
+
+            // 移動障礙物
+            obstacles.forEach((obstacle, index) => {
+                obstacle.y += obstacle.speed;
+
+                // 移除超出畫布的障礙物並加分
+                if (obstacle.y > canvas.height) {
+                    obstacles.splice(index, 1);
+                    score++;
+                    scoreDisplay.textContent = `分數: ${score}`;
+                }
+
+                // 碰撞檢測
+                if (
+                    player.x < obstacle.x + obstacle.width &&
+                    player.x + player.width > obstacle.x &&
+                    player.y < obstacle.y + obstacle.height &&
+                    player.y + player.height > obstacle.y
+                ) {
+                    endGame();
+                }
+            });
+        }
+        
+        // 繪製所有遊戲元素
+        function draw() {
+            // 清除畫布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 繪製玩家
+            if (player) {
+                ctx.fillStyle = player.color;
+                ctx.fillRect(player.x, player.y, player.width, player.height);
+            }
+
+            // 繪製障礙物
+            obstacles.forEach(obstacle => {
+                ctx.fillStyle = obstacle.color;
+                ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+            });
+        }
+        
+        // 遊戲結束邏輯
+        function endGame() {
+            isGameOver = true;
+            cancelAnimationFrame(animationFrameId);
+            clearInterval(obstacleSpawnTimer);
+            
+            finalScore.textContent = score;
+            gameOverScreen.classList.remove('hidden');
+            scoreDisplay.classList.add('hidden');
+        }
+
+        // 觸控控制
+        function handleTouch(e) {
+             if (!player || isGameOver) return;
+            const touchX = e.touches[0].clientX;
+            const rect = canvas.getBoundingClientRect();
+            player.x = touchX - rect.left - player.width / 2;
+        }
+        canvas.addEventListener('touchmove', handleTouch);
+        canvas.addEventListener('touchstart', handleTouch);
+
+
+        // 事件監聽
+        startButton.addEventListener('click', () => {
+            startScreen.classList.add('hidden');
+            init();
+        });
+
+        restartButton.addEventListener('click', () => {
+            gameOverScreen.classList.add('hidden');
+            init();
+        });
+
+        window.addEventListener('resize', () => {
+            resizeCanvas();
+            // 在調整大小後可能需要重置遊戲或調整元素位置
+            if (!isGameOver && !startScreen.classList.contains('hidden')) {
+                 // 如果遊戲還沒開始，只重繪初始狀態
+            } else if (!isGameOver) {
+                // 如果遊戲正在進行，可以重新初始化
+                endGame();
+                startScreen.classList.remove('hidden');
+            }
+        });
+
+        // 初始設置
+        resizeCanvas();
+    </script>
+</body>
+</html>
+
